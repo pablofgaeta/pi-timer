@@ -20,6 +20,7 @@ Then run this inside Pi:
 
 ```text
 /timer 10m check the build log
+/timer every 10m check the build log
 /timer list
 /timer cancel 1
 /timer clear
@@ -36,3 +37,5 @@ Aliases inside `/timer`:
 Supported delay units: `s`, `sec`, `seconds`, `m`, `min`, `minutes`, `h`, `hr`, `hours`.
 
 When a timer fires, the extension sends the scheduled text as a follow-up user message with prompt-template and slash-command expansion enabled.
+
+Use `every` before the delay to make a timer recur until you cancel it, clear timers, or the Pi session ends.

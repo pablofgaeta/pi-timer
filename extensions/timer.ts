@@ -7,6 +7,8 @@ type ScheduledTimer = {
   prompt: string;
   dueAt: number;
   delayText: string;
+  delay: number;
+  recurring: boolean;
 };
 
 const timers = new Map<number, ScheduledTimer>();
@@ -53,15 +55,40 @@ function help(): string {
   return [
     "Usage:",
     "  /timer 10m check the build log",
+    "  /timer every 10m check the build log",
     "  /timer list",
     "  /timer cancel 1",
     "  /timer clear",
   ].join("\n");
 }
 
+function deliver(pi: ExtensionAPI, prompt: string): void {
+  pi.sendUserMessage(prompt, {
+    deliverAs: "followUp",
+    expandPromptTemplates: true,
+  });
+}
+
+function scheduleTimer(pi: ExtensionAPI, id: number, timer: Omit<ScheduledTimer, "handle" | "dueAt">): ScheduledTimer {
+  const dueAt = Date.now() + timer.delay;
+  const handle = setTimeout(() => {
+    if (!timers.has(id)) return;
+
+    if (timer.recurring) {
+      timers.set(id, scheduleTimer(pi, id, timer));
+    } else {
+      timers.delete(id);
+    }
+
+    deliver(pi, timer.prompt);
+  }, timer.delay);
+
+  return { ...timer, handle, dueAt };
+}
+
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("timer", {
-    description: "In-session timers. Usage: /timer 10m check the build log, /timer list, /timer cancel 1, /timer clear",
+    description: "In-session timers. Usage: /timer 10m check the build log, /timer every 10m check the build log, /timer list, /timer cancel 1, /timer clear",
     handler: async (args, ctx) => {
       const trimmed = args.trim();
 
@@ -76,9 +103,10 @@ export default function (pi: ExtensionAPI) {
           return;
         }
 
-        const lines = [...timers.entries()].map(
-          ([id, timer]) => `#${id}: ${formatRemaining(timer.dueAt)} left - ${timer.prompt}`,
-        );
+        const lines = [...timers.entries()].map(([id, timer]) => {
+          const repeatText = timer.recurring ? ` (every ${timer.delayText})` : "";
+          return `#${id}: ${formatRemaining(timer.dueAt)} left${repeatText} - ${timer.prompt}`;
+        });
         ctx.ui.notify(lines.join("\n"), "info");
         return;
       }
@@ -102,9 +130,11 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const separator = trimmed.search(/\s/);
-      const delayText = separator === -1 ? trimmed : trimmed.slice(0, separator);
-      const prompt = separator === -1 ? "" : trimmed.slice(separator).trim();
+      const recurring = /^every\s+/i.test(trimmed);
+      const scheduleText = recurring ? trimmed.replace(/^every\s+/i, "") : trimmed;
+      const separator = scheduleText.search(/\s/);
+      const delayText = separator === -1 ? scheduleText : scheduleText.slice(0, separator);
+      const prompt = separator === -1 ? "" : scheduleText.slice(separator).trim();
       const delay = parseDelay(delayText);
 
       if (delay === undefined || prompt.length === 0) {
@@ -113,17 +143,9 @@ export default function (pi: ExtensionAPI) {
       }
 
       const id = nextId++;
-      const dueAt = Date.now() + delay;
-      const handle = setTimeout(() => {
-        timers.delete(id);
-        pi.sendUserMessage(prompt, {
-          deliverAs: "followUp",
-          expandPromptTemplates: true,
-        });
-      }, delay);
-
-      timers.set(id, { handle, prompt, dueAt, delayText });
-      ctx.ui.notify(`Timer #${id}: ${delayText} - ${prompt}`, "info");
+      timers.set(id, scheduleTimer(pi, id, { prompt, delay, delayText, recurring }));
+      const repeatText = recurring ? ` every ${delayText}` : ` ${delayText}`;
+      ctx.ui.notify(`Timer #${id}:${repeatText} - ${prompt}`, "info");
     },
   });
 
