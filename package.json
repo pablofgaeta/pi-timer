@@ -1,0 +1,14 @@
+{
+  "name": "pi-timer",
+  "version": "0.1.0",
+  "description": "In-session timer command for Pi.",
+  "keywords": ["pi-package", "pi-extension", "timer"],
+  "license": "MIT",
+  "type": "module",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/timer.ts"]
+  }
+}
